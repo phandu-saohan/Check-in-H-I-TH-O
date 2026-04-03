@@ -1,0 +1,7 @@
+{
+  "name": "Hội Thảo Khoa Học Check-in",
+  "description": "Hệ thống điểm danh sinh viên tham dự Hội thảo Khoa học ngày 11/04/2026. Đảm bảo mỗi sinh viên chỉ được check-in cho chính mình.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
