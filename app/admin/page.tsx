@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/firebase';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
-import { Loader2, Download, ArrowLeft, Users, RefreshCw, CheckCircle2, XCircle, FileSpreadsheet } from 'lucide-react';
+import { collection, getDocs, orderBy, query, doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { Loader2, Download, ArrowLeft, Users, RefreshCw, CheckCircle2, XCircle, FileSpreadsheet, Shield, Trash2, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
@@ -25,19 +25,44 @@ export default function AdminPage() {
   const [records, setRecords] = useState<CheckInRecord[]>([]);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'checkins' | 'crosscheck'>('checkins');
+  const [activeTab, setActiveTab] = useState<'checkins' | 'crosscheck' | 'admins'>('checkins');
   const [csvData, setCsvData] = useState<any[]>([]);
   const [syncingSheet, setSyncingSheet] = useState(false);
+  
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [adminList, setAdminList] = useState<any[]>([]);
+  const [newAdminEmail, setNewAdminEmail] = useState('');
 
   useEffect(() => {
-    if (!loading && (!user || user.email !== 'phandu8899@gmail.com')) {
-      router.push('/');
+    async function checkAdmin() {
+      if (!user) {
+        if (!loading) router.push('/');
+        return;
+      }
+      if (user.email === 'phandu8899@gmail.com') {
+        setIsAdmin(true);
+        return;
+      }
+      try {
+        const docRef = doc(db, 'admins', user.email!.toLowerCase());
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setIsAdmin(true);
+        } else {
+          setIsAdmin(false);
+          router.push('/');
+        }
+      } catch (e) {
+        setIsAdmin(false);
+        router.push('/');
+      }
     }
+    if (!loading) checkAdmin();
   }, [user, loading, router]);
 
   useEffect(() => {
     async function fetchRecords() {
-      if (!user || user.email !== 'phandu8899@gmail.com') return;
+      if (!isAdmin) return;
       
       try {
         const q = query(collection(db, 'checkins'), orderBy('timestamp', 'desc'));
@@ -56,7 +81,53 @@ export default function AdminPage() {
     }
 
     fetchRecords();
-  }, [user]);
+  }, [isAdmin]);
+
+  const fetchAdmins = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'admins'));
+      setAdminList(snap.docs.map(d => d.data()));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin && activeTab === 'admins') {
+      fetchAdmins();
+    }
+  }, [isAdmin, activeTab]);
+
+  const handleAddAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminEmail || !newAdminEmail.includes('@')) return alert('Email không hợp lệ');
+    try {
+      const emailLower = newAdminEmail.toLowerCase().trim();
+      await setDoc(doc(db, 'admins', emailLower), {
+        email: emailLower,
+        addedBy: user?.email,
+        timestamp: serverTimestamp()
+      });
+      setNewAdminEmail('');
+      fetchAdmins();
+      alert('Đã thêm admin thành công');
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi khi thêm admin. Đảm bảo bạn có quyền thực hiện.');
+    }
+  };
+
+  const handleRemoveAdmin = async (email: string) => {
+    if (email === 'phandu8899@gmail.com') return alert('Không thể xóa admin gốc');
+    if (!confirm(`Bạn có chắc muốn xóa quyền admin của ${email}?`)) return;
+    try {
+      await deleteDoc(doc(db, 'admins', email));
+      fetchAdmins();
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi khi xóa admin');
+    }
+  };
 
   const exportToCSV = () => {
     const exportData = records.map((record, index) => ({
@@ -143,7 +214,7 @@ export default function AdminPage() {
     document.body.removeChild(link);
   };
 
-  if (loading || (user && user.email !== 'phandu8899@gmail.com' && !error)) {
+  if (loading || isAdmin === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -151,7 +222,7 @@ export default function AdminPage() {
     );
   }
 
-  if (!user) {
+  if (!user || !isAdmin) {
     return null;
   }
 
@@ -169,10 +240,10 @@ export default function AdminPage() {
             </div>
           </div>
           
-          <div className="flex bg-gray-100 p-1 rounded-lg">
+          <div className="flex bg-gray-100 p-1 rounded-lg overflow-x-auto">
             <button
               onClick={() => setActiveTab('checkins')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                 activeTab === 'checkins' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
@@ -180,11 +251,19 @@ export default function AdminPage() {
             </button>
             <button
               onClick={() => setActiveTab('crosscheck')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                 activeTab === 'crosscheck' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               Đối soát danh sách
+            </button>
+            <button
+              onClick={() => setActiveTab('admins')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                activeTab === 'admins' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Quản lý Admin
             </button>
           </div>
         </div>
@@ -248,7 +327,7 @@ export default function AdminPage() {
               </table>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'crosscheck' ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50">
               <div>
@@ -374,6 +453,82 @@ export default function AdminPage() {
                 </table>
               </div>
             )}
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">Quản lý quyền Admin</h3>
+                <p className="text-sm text-gray-500">Thêm hoặc xóa quyền truy cập trang quản trị cho các email khác.</p>
+              </div>
+            </div>
+            
+            <div className="p-6 border-b border-gray-100">
+              <form onSubmit={handleAddAdmin} className="flex gap-3 max-w-md">
+                <input
+                  type="email"
+                  value={newAdminEmail}
+                  onChange={(e) => setNewAdminEmail(e.target.value)}
+                  placeholder="Nhập email cần cấp quyền..."
+                  className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-4 py-2 border"
+                  required
+                />
+                <button
+                  type="submit"
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Thêm
+                </button>
+              </form>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email Admin</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Người thêm</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thời gian thêm</th>
+                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  <tr className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 flex items-center">
+                      <Shield className="w-4 h-4 text-blue-600 mr-2" />
+                      phandu8899@gmail.com
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        Admin gốc
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Hệ thống</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">-</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <span className="text-gray-400 cursor-not-allowed">Không thể xóa</span>
+                    </td>
+                  </tr>
+                  {adminList.map((admin) => (
+                    <tr key={admin.email} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{admin.email}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{admin.addedBy}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {admin.timestamp?.toDate ? admin.timestamp.toDate().toLocaleString('vi-VN') : ''}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button
+                          onClick={() => handleRemoveAdmin(admin.email)}
+                          className="text-red-600 hover:text-red-900 flex items-center justify-end w-full"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Xóa
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

@@ -1,5 +1,16 @@
 {
   "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "Admin user email",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "addedBy": { "type": "string" },
+        "timestamp": { "type": "timestamp" }
+      },
+      "required": ["email", "addedBy", "timestamp"]
+    },
     "CheckIn": {
       "title": "CheckIn",
       "description": "A student's check-in record for the event.",
@@ -38,6 +49,10 @@
     }
   },
   "firestore": {
+    "/admins/{email}": {
+      "schema": "Admin",
+      "description": "Stores admin emails."
+    },
     "/checkins/{uid}": {
       "schema": "CheckIn",
       "description": "Stores check-in records, keyed by the user's UID to ensure one check-in per account."

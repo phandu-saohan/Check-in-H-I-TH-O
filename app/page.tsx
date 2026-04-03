@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { auth, db, googleProvider } from '@/firebase';
 import { signInWithPopup, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, getDocFromServer } from 'firebase/firestore';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -24,6 +24,38 @@ export default function Home() {
   const [hasCheckedIn, setHasCheckedIn] = useState<boolean | null>(null);
   const [checkInData, setCheckInData] = useState<any>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    async function checkAdmin() {
+      if (user?.email === 'phandu8899@gmail.com') {
+        setIsAdmin(true);
+      } else if (user?.email) {
+        try {
+          const docSnap = await getDocFromServer(doc(db, 'admins', user.email.toLowerCase()));
+          setIsAdmin(docSnap.exists());
+        } catch (e) {
+          setIsAdmin(false);
+        }
+      } else {
+        setIsAdmin(false);
+      }
+    }
+    checkAdmin();
+  }, [user]);
+
+  useEffect(() => {
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if(error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration. ");
+        }
+      }
+    }
+    testConnection();
+  }, []);
 
   const {
     register,
@@ -135,10 +167,14 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
         <div className="text-center">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight uppercase">
-            Tối ưu hóa liền thương và kiểm soát sẹo: Từ cơ chế sinh học đến chiến lược can thiệp lâm sàng ngay từ đầu
+          <h1 className="font-bold text-gray-900 tracking-tight">
+            <span className="text-2xl sm:text-3xl uppercase">HỘI THẢO KHOA HỌC</span>
+            <br />
+            <span className="text-lg sm:text-xl mt-2 block text-blue-800">
+              Tối ưu hóa liền thương và kiểm soát sẹo: Từ cơ chế sinh học đến chiến lược can thiệp lâm sàng ngay từ đầu
+            </span>
           </h1>
-          <p className="mt-3 text-sm font-medium text-blue-700">
+          <p className="mt-3 text-sm font-medium text-gray-700">
             Trường Đại Học Y khoa Phạm Ngọc Thạch
           </p>
           <p className="mt-1 text-sm text-gray-600">
@@ -269,7 +305,7 @@ export default function Home() {
           </div>
         )}
         
-        {user && user.email === 'phandu8899@gmail.com' && (
+        {isAdmin && (
           <div className="pt-6 mt-6 border-t border-gray-100 text-center">
             <Link href="/admin" className="text-sm font-medium text-blue-600 hover:text-blue-500">
               Truy cập trang Quản trị viên &rarr;

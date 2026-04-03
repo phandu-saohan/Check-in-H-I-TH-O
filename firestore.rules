@@ -32,7 +32,10 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == "phandu8899@gmail.com" && request.auth.token.email_verified == true;
+      return isAuthenticated() && (
+        (request.auth.token.email == "phandu8899@gmail.com" && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+      );
     }
     
     function hasRequiredFields(fields) {
@@ -67,6 +70,16 @@ service cloud.firestore {
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /admins/{adminEmail} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() &&
+                    hasOnlyAllowedFields(['email', 'addedBy', 'timestamp']) &&
+                    hasRequiredFields(['email', 'addedBy', 'timestamp']) &&
+                    request.resource.data.email == adminEmail;
+      allow delete: if isAdmin() && adminEmail != "phandu8899@gmail.com";
+      allow update: if false;
+    }
 
     match /checkins/{userId} {
       // Users can read their own check-in, admins can read all
