@@ -18,27 +18,6 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
-const TARGET_LAT = 10.7730364;
-const TARGET_LON = 106.665905;
-const MAX_DISTANCE_M = 200;
-
-function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371e3; // Radius of the earth in m
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const d = R * c; // Distance in m
-  return d;
-}
-
-function deg2rad(deg: number) {
-  return deg * (Math.PI / 180);
-}
-
 export default function Home() {
   const { user, loading } = useAuth();
   const [checkingIn, setCheckingIn] = useState(false);
@@ -160,14 +139,6 @@ export default function Home() {
         (position) => {
           const lat = position.coords.latitude;
           const lon = position.coords.longitude;
-          const distance = getDistanceFromLatLonInM(lat, lon, TARGET_LAT, TARGET_LON);
-          
-          if (distance > MAX_DISTANCE_M) {
-            setLocationError("Bạn hãy đến Phòng Hội Thảo mới được check in");
-            setCheckingIn(false);
-            return;
-          }
-          
           saveCheckIn(lat, lon);
         },
         (error) => {
