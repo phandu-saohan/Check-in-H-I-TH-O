@@ -14,8 +14,8 @@ service cloud.firestore {
     //   - fullName: string (required, max 100 chars) - Student's full name
     //   - contactInfo: string (required, max 20 chars) - Contact info (Phone/Zalo)
     //   - timestamp: timestamp (required) - Time of check-in
-    //   - latitude: number (optional) - Location latitude
-    //   - longitude: number (optional) - Location longitude
+    //   - latitude: number (required) - Location latitude
+    //   - longitude: number (required) - Location longitude
     //
     // ===============================================================
 
@@ -54,7 +54,7 @@ service cloud.firestore {
     
     function isValidCheckIn(userId) {
       let allowedFields = ['uid', 'email', 'fullName', 'contactInfo', 'timestamp', 'latitude', 'longitude'];
-      let requiredFields = ['uid', 'email', 'fullName', 'contactInfo', 'timestamp'];
+      let requiredFields = ['uid', 'email', 'fullName', 'contactInfo', 'timestamp', 'latitude', 'longitude'];
       
       return hasOnlyAllowedFields(allowedFields) &&
              hasRequiredFields(requiredFields) &&
@@ -63,8 +63,8 @@ service cloud.firestore {
              isValidString('fullName', 2, 100) &&
              isValidString('contactInfo', 8, 20) &&
              request.resource.data.timestamp is timestamp &&
-             (!('latitude' in request.resource.data) || request.resource.data.latitude is number) &&
-             (!('longitude' in request.resource.data) || request.resource.data.longitude is number);
+             request.resource.data.latitude is number &&
+             request.resource.data.longitude is number;
     }
 
     // ===============================================================

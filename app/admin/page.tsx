@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/firebase';
 import { collection, getDocs, orderBy, query, doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { Loader2, Download, ArrowLeft, Users, RefreshCw, CheckCircle2, XCircle, FileSpreadsheet, Shield, Trash2, Plus } from 'lucide-react';
+import { Loader2, Download, ArrowLeft, Users, RefreshCw, CheckCircle2, XCircle, FileSpreadsheet, Shield, Trash2, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
@@ -32,6 +32,16 @@ export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [adminList, setAdminList] = useState<any[]>([]);
   const [newAdminEmail, setNewAdminEmail] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredRecords = records.filter(record => {
+    const query = searchQuery.toLowerCase();
+    return (
+      record.fullName.toLowerCase().includes(query) ||
+      record.email.toLowerCase().includes(query) ||
+      record.contactInfo.toLowerCase().includes(query)
+    );
+  });
 
   useEffect(() => {
     async function checkAdmin() {
@@ -130,7 +140,7 @@ export default function AdminPage() {
   };
 
   const exportToCSV = () => {
-    const exportData = records.map((record, index) => ({
+    const exportData = filteredRecords.map((record, index) => ({
       STT: index + 1,
       'Họ và tên': record.fullName,
       'SĐT/Zalo': record.contactInfo,
@@ -278,19 +288,33 @@ export default function AdminPage() {
           </div>
         ) : activeTab === 'checkins' ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+            <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50">
               <div className="flex items-center space-x-2 text-sm font-medium text-blue-600 bg-blue-50 px-4 py-2 rounded-lg">
                 <Users className="w-4 h-4" />
-                <span>Tổng cộng: {records.length} lượt check-in</span>
+                <span>Tổng cộng: {filteredRecords.length} lượt check-in</span>
               </div>
-              <button
-                onClick={exportToCSV}
-                disabled={records.length === 0}
-                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium shadow-sm"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Xuất CSV Check-in
-              </button>
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                <div className="relative w-full sm:w-64">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Tìm tên, email, SĐT..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                </div>
+                <button
+                  onClick={exportToCSV}
+                  disabled={filteredRecords.length === 0}
+                  className="flex items-center justify-center w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium shadow-sm"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Xuất CSV
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -304,14 +328,14 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {records.length === 0 ? (
+                  {filteredRecords.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                        Chưa có sinh viên nào điểm danh.
+                        Không tìm thấy kết quả nào.
                       </td>
                     </tr>
                   ) : (
-                    records.map((record, index) => (
+                    filteredRecords.map((record, index) => (
                       <tr key={record.uid} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{record.fullName}</td>

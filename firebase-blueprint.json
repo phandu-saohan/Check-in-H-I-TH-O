@@ -45,7 +45,7 @@
           "description": "Longitude of the user when checking in."
         }
       },
-      "required": ["uid", "email", "fullName", "contactInfo", "timestamp"]
+      "required": ["uid", "email", "fullName", "contactInfo", "timestamp", "latitude", "longitude"]
     }
   },
   "firestore": {
