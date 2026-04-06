@@ -88,9 +88,9 @@ service cloud.firestore {
       // Users can create their own check-in once
       allow create: if isOwner(userId) && isValidCheckIn(userId);
       
-      // Check-ins are immutable once created
-      allow update: if false;
-      allow delete: if false;
+      // Admins can update and delete
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
   }
 }

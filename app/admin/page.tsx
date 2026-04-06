@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/firebase';
-import { collection, getDocs, orderBy, query, doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { Loader2, Download, ArrowLeft, Users, RefreshCw, CheckCircle2, XCircle, FileSpreadsheet, Shield, Trash2, Plus, Search } from 'lucide-react';
+import { collection, getDocs, orderBy, query, doc, getDoc, setDoc, deleteDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { Loader2, Download, ArrowLeft, Users, RefreshCw, CheckCircle2, XCircle, FileSpreadsheet, Shield, Trash2, Plus, Search, MapPin, Edit2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
@@ -18,6 +18,39 @@ interface CheckInRecord {
   latitude?: number;
   longitude?: number;
 }
+
+function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371e3; // Radius of the earth in m
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function deg2rad(deg: number) {
+  return deg * (Math.PI / 180);
+}
+
+const checkMatch = (row: any, records: CheckInRecord[]) => {
+  const email = row['Email']?.toString().trim().toLowerCase();
+  const name = row['Họ và tên']?.toString().trim().toLowerCase();
+  const phoneRaw = row['Thông tin liên hệ (SĐT/Zalo)']?.toString() || '';
+  const phone = phoneRaw.replace(/\D/g, '').slice(-9);
+
+  return records.find(r => {
+    const rEmail = r.email.toLowerCase();
+    const rName = r.fullName.toLowerCase();
+    const rPhone = r.contactInfo.replace(/\D/g, '').slice(-9);
+
+    return (email && rEmail === email) || 
+           (name && rName === name) ||
+           (phone && rPhone && phone === rPhone);
+  });
+};
 
 export default function AdminPage() {
   const { user, loading } = useAuth();
@@ -33,6 +66,12 @@ export default function AdminPage() {
   const [adminList, setAdminList] = useState<any[]>([]);
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingRecord, setEditingRecord] = useState<CheckInRecord | null>(null);
+  const [editForm, setEditForm] = useState({ fullName: '', contactInfo: '', email: '' });
+  
+  const [targetLat, setTargetLat] = useState<number>(10.7730364);
+  const [targetLon, setTargetLon] = useState<number>(106.665905);
+  const [maxRadius, setMaxRadius] = useState<number>(150);
 
   const filteredRecords = records.filter(record => {
     const query = searchQuery.toLowerCase();
@@ -139,6 +178,38 @@ export default function AdminPage() {
     }
   };
 
+  const handleEditClick = (record: CheckInRecord) => {
+    setEditingRecord(record);
+    setEditForm({ fullName: record.fullName, contactInfo: record.contactInfo, email: record.email });
+  };
+
+  const handleUpdateRecord = async () => {
+    if (!editingRecord) return;
+    try {
+      await updateDoc(doc(db, 'checkins', editingRecord.uid), {
+        fullName: editForm.fullName,
+        contactInfo: editForm.contactInfo,
+        email: editForm.email
+      });
+      setRecords(records.map(r => r.uid === editingRecord.uid ? { ...r, ...editForm } : r));
+      setEditingRecord(null);
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi cập nhật. Vui lòng kiểm tra quyền.');
+    }
+  };
+
+  const handleDeleteRecord = async (uid: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa lượt check-in này?')) return;
+    try {
+      await deleteDoc(doc(db, 'checkins', uid));
+      setRecords(records.filter(r => r.uid !== uid));
+    } catch (error) {
+      console.error(error);
+      alert('Lỗi khi xóa. Vui lòng kiểm tra quyền.');
+    }
+  };
+
   const exportToCSV = () => {
     const exportData = filteredRecords.map((record, index) => ({
       STT: index + 1,
@@ -148,6 +219,7 @@ export default function AdminPage() {
       'Thời gian': record.timestamp?.toDate ? record.timestamp.toDate().toLocaleString('vi-VN') : '',
       'Vĩ độ': record.latitude || '',
       'Kinh độ': record.longitude || '',
+      'Link Vị trí': (record.latitude && record.longitude) ? `https://www.google.com/maps?q=${record.latitude},${record.longitude}` : ''
     }));
 
     const csv = Papa.unparse(exportData);
@@ -192,13 +264,7 @@ export default function AdminPage() {
 
   const exportCrossCheckCSV = () => {
     const exportData = csvData.map((row, index) => {
-      const email = row['Email']?.toString().trim().toLowerCase();
-      const name = row['Họ và tên']?.toString().trim().toLowerCase();
-      
-      const matchedRecord = records.find(r => 
-        (email && r.email.toLowerCase() === email) || 
-        (name && r.fullName.toLowerCase() === name)
-      );
+      const matchedRecord = checkMatch(row, records);
 
       return {
         'STT': index + 1,
@@ -316,6 +382,22 @@ export default function AdminPage() {
                 </button>
               </div>
             </div>
+            
+            <div className="p-4 border-b border-gray-100 bg-blue-50/30 flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Vĩ độ đích (Latitude)</label>
+                <input type="number" step="any" value={targetLat} onChange={e => setTargetLat(Number(e.target.value))} className="block w-full sm:w-40 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Kinh độ đích (Longitude)</label>
+                <input type="number" step="any" value={targetLon} onChange={e => setTargetLon(Number(e.target.value))} className="block w-full sm:w-40 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Bán kính hợp lệ (m)</label>
+                <input type="number" value={maxRadius} onChange={e => setMaxRadius(Number(e.target.value))} className="block w-full sm:w-32 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -325,12 +407,14 @@ export default function AdminPage() {
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SĐT/Zalo</th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thời gian</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vị trí (Khoảng cách)</th>
+                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                         Không tìm thấy kết quả nào.
                       </td>
                     </tr>
@@ -344,12 +428,64 @@ export default function AdminPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {record.timestamp?.toDate ? record.timestamp.toDate().toLocaleString('vi-VN') : ''}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {record.latitude && record.longitude ? (
+                            <div className="flex flex-col">
+                              <span className="font-mono text-xs">{record.latitude.toFixed(6)}, {record.longitude.toFixed(6)}</span>
+                              {(() => {
+                                const dist = getDistanceFromLatLonInM(record.latitude, record.longitude, targetLat, targetLon);
+                                const isInside = dist <= maxRadius;
+                                return (
+                                  <span className={`text-xs font-medium mt-1 ${isInside ? 'text-green-600' : 'text-red-600'}`}>
+                                    Cách đích: {Math.round(dist)}m {isInside ? '(Hợp lệ)' : '(Ngoài vùng)'}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">Không có</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button onClick={() => handleEditClick(record)} className="text-blue-600 hover:text-blue-900 mr-3 inline-flex items-center">
+                            <Edit2 className="w-4 h-4 mr-1" /> Sửa
+                          </button>
+                          <button onClick={() => handleDeleteRecord(record.uid)} className="text-red-600 hover:text-red-900 inline-flex items-center">
+                            <Trash2 className="w-4 h-4 mr-1" /> Xóa
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
             </div>
+
+            {editingRecord && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">Sửa thông tin Check-in</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Họ và tên</label>
+                      <input type="text" value={editForm.fullName} onChange={e => setEditForm({...editForm, fullName: e.target.value})} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Email</label>
+                      <input type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">SĐT/Zalo</label>
+                      <input type="text" value={editForm.contactInfo} onChange={e => setEditForm({...editForm, contactInfo: e.target.value})} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                    </div>
+                  </div>
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button onClick={() => setEditingRecord(null)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Hủy</button>
+                    <button onClick={handleUpdateRecord} className="px-4 py-2 bg-blue-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-blue-700">Lưu thay đổi</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : activeTab === 'crosscheck' ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
@@ -406,20 +542,12 @@ export default function AdminPage() {
                   <div className="flex items-center text-green-700">
                     <CheckCircle2 className="w-4 h-4 mr-1" />
                     <span className="font-medium mr-2">Đã check-in:</span> 
-                    {csvData.filter(row => {
-                      const email = row['Email']?.toString().trim().toLowerCase();
-                      const name = row['Họ và tên']?.toString().trim().toLowerCase();
-                      return records.some(r => (email && r.email.toLowerCase() === email) || (name && r.fullName.toLowerCase() === name));
-                    }).length}
+                    {csvData.filter(row => checkMatch(row, records)).length}
                   </div>
                   <div className="flex items-center text-red-700">
                     <XCircle className="w-4 h-4 mr-1" />
                     <span className="font-medium mr-2">Chưa check-in:</span>
-                    {csvData.filter(row => {
-                      const email = row['Email']?.toString().trim().toLowerCase();
-                      const name = row['Họ và tên']?.toString().trim().toLowerCase();
-                      return !records.some(r => (email && r.email.toLowerCase() === email) || (name && r.fullName.toLowerCase() === name));
-                    }).length}
+                    {csvData.filter(row => !checkMatch(row, records)).length}
                   </div>
                 </div>
                 <table className="min-w-full divide-y divide-gray-200">
@@ -435,13 +563,7 @@ export default function AdminPage() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {csvData.map((row, index) => {
-                      const email = row['Email']?.toString().trim().toLowerCase();
-                      const name = row['Họ và tên']?.toString().trim().toLowerCase();
-                      
-                      const matchedRecord = records.find(r => 
-                        (email && r.email.toLowerCase() === email) || 
-                        (name && r.fullName.toLowerCase() === name)
-                      );
+                      const matchedRecord = checkMatch(row, records);
 
                       return (
                         <tr key={index} className="hover:bg-gray-50 transition-colors">
